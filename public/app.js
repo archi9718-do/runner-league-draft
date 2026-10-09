@@ -256,6 +256,7 @@ function card(name, attrs, label) {
 
 function render() {
   const lobby = $("lobby"), bar = $("roombar"), game = $("game");
+  $("readybox").innerHTML = "";
   const mine = (code || solo) && mySeat();
   lobby.hidden = !!mine; bar.hidden = !code && !solo; game.hidden = !mine;
 
@@ -330,10 +331,10 @@ function render() {
     return;
   }
   const taken = new Set(S.picks);
-  const readyHtml = full && !go ? `<h2 class="band">Ready<small>${readyCount()}/${n()} 준비</small></h2>
-    <div class="lobby-row"><button class="btn" data-act="ready" ${isReady(mine) || busy ? "disabled" : ""}>${isReady(mine) ? "준비 완료" : "준비"}</button></div>
-    <p class="hint">모두 준비하면 바로 시작합니다. ${READY_MS / 1000}초 안에 준비하지 않은 팀장은 자리에서 빠집니다. 시작 후 ${PICK_MS / 1000}초 안에 고르지 않으면 자동으로 지명됩니다.</p>` : "";
-  $("pool").innerHTML = readyHtml + ["DPS", "SUP"].map(role => {
+  // ready button sits right under the countdown so it is the first thing a captain sees
+  if (full && !go) $("readybox").innerHTML = `<div class="lobby-row"><button class="btn" data-act="ready" ${isReady(mine) || busy ? "disabled" : ""}>${isReady(mine) ? "준비 완료" : "준비"}</button></div>
+    <p class="hint">모두 준비하면 바로 시작합니다. ${READY_MS / 1000}초 안에 준비하지 않은 팀장은 자리에서 빠집니다. 시작 후 ${PICK_MS / 1000}초 안에 고르지 않으면 자동으로 지명됩니다.</p>`;
+  $("pool").innerHTML = ["DPS", "SUP"].map(role => {
     const list = (role === "DPS" ? S.dps : S.sup).filter(p => !taken.has(p));
     const capped = count(t, role) >= S.cap;
     const note = !full ? "모두 입장하면 시작" : !go ? "모두 준비하면 시작" : !myTurn ? `${esc(S.teams[t])} 팀 차례` : capped ? "한도 도달" : `남은 ${list.length}명`;
