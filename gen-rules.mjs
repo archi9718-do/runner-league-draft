@@ -13,6 +13,22 @@ const names = [...S.dps, ...S.sup].map(x => `newData.val() === '${x}'`).join(" |
 
 const seats = { $other: { ".validate": false } };
 const ready = { $other: { ".validate": false } };
+// slots/o<k> = seat key of the captain who picks k-th in round 1 (first come)
+const slot = k => `${R}.child('slots/o${k}')`;
+const slotOwner = v => `${R}.child('seats').child(${v}).val() === auth.uid`;
+const slots = { $other: { ".validate": false } };
+I.forEach(k => {
+  slots["o" + k] = {
+    ".write": `auth != null && !${started} && (` +
+      // take a free slot for my own seat, holding no other slot after this write (switching is one write)
+      `(!data.exists() && ${slotOwner("newData.val()")} && ${I.filter(j => j !== k).map(j => `newData.parent().child('o${j}').val() !== newData.val()`).join(" && ")})` +
+      // give it back: not while ready, unless the seat itself is being left in the same write
+      ` || (!newData.exists() && ${slotOwner("data.val()")} && (${R}.child('ready').child(data.val()).val() !== true || !newData.parent().parent().child('seats').child(data.val()).exists()))` +
+      // ready window over: free the slot of a captain being removed
+      ` || (!newData.exists() && ${seated} && ${R}.child('readyAt').exists() && now > ${R}.child('readyAt').val() + ${READY_MS} && ${R}.child('ready').child(data.val()).val() !== true))`,
+    ".validate": "newData.isString() && newData.val().matches(/^s[0-4]$/)",
+  };
+});
 I.forEach(i => {
   seats[seatKey(i)] = { ".write": `auth != null && (` +
     // claim an empty seat, not already holding another
@@ -22,13 +38,13 @@ I.forEach(i => {
     // ready window over: any captain may remove one who never pressed ready
     ` || (data.exists() && !newData.exists() && ${seated} && !${started} && ${R}.child('readyAt').exists() && now > ${R}.child('readyAt').val() + ${READY_MS} && ${R}.child('ready/${seatKey(i)}').val() !== true))` };
   ready[seatKey(i)] = {
-    ".write": `auth != null && !${started} && ${seat(i)}.val() === auth.uid`,
+    ".write": `auth != null && !${started} && ${seat(i)}.val() === auth.uid && (${I.map(k => `${slot(k)}.val() === '${seatKey(i)}'`).join(" || ")})`,
     ".validate": "newData.isBoolean()",
   };
 });
 
+// no ".write" here: a finished draft is never wiped
 const picks = {
-  ".write": `auth != null && ${seated} && !newData.exists()`,
   $other: { ".validate": false },
 };
 for (let p = 0; p < total(); p++) {
@@ -36,7 +52,7 @@ for (let p = 0; p < total(); p++) {
     ".write": `auth != null && !data.exists() && ${p ? `${R}.child('picks/${pickKey(p - 1)}').exists()` : "true"} && ${allSeated}` +
       ` && ${R}.child('turn').val() === ${p} && newData.parent().parent().child('turn').val() === ${p + 1}` +
       // the team on the clock picks; after the time limit any captain picks for it
-      ` && (${seat(teamOf(p))}.val() === auth.uid || (${seated} && now >= ${R}.child('turnAt').val() + ${PICK_MS}))`,
+      ` && (${slotOwner(`${slot(teamOf(p))}.val()`)} || (${seated} && now >= ${R}.child('turnAt').val() + ${PICK_MS}))`,
     ".validate": `newData.isString() && (${names}) && newData.parent().parent().child('taken').child(newData.val()).val() === '${pickKey(p)}'`,
   };
 }
@@ -57,13 +73,14 @@ const rules = { rules: {
     createdAt: { ".validate": "newData.isNumber()" },
     seats,
     ready,
+    slots,
     readyAt: {
       ".write": `auth != null && ${seated} && !${started} && (!newData.exists() || (!data.exists() && newData.val() === now && ${allSeated}))`,
       ".validate": "newData.isNumber()",
     },
-    // next pick index; 0 starts (or restarts after reset) once everyone is ready
+    // next pick index; 0 starts once everyone is ready
     turn: {
-      ".write": `auth != null && ${seated} && ((newData.val() === 0 && !newData.parent().child('picks').exists() && ${allSeated} && ${allReady}) || ${turnSteps})`,
+      ".write": `auth != null && ${seated} && ((!data.exists() && newData.val() === 0 && !newData.parent().child('picks').exists() && ${allSeated} && ${allReady}) || ${turnSteps})`,
       ".validate": "newData.isNumber()",
     },
     turnAt: {
@@ -72,7 +89,6 @@ const rules = { rules: {
     },
     picks,
     taken: {
-      ".write": `auth != null && ${seated} && !newData.exists()`,
       $name: {
         ".write": "auth != null && !data.exists()",
         ".validate": "newData.isString() && newData.parent().parent().child('picks').child(newData.val()).val() === $name",
