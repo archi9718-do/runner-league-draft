@@ -9,6 +9,8 @@ export const S = {
   picks: [], // online: mirrored from rooms/<code>/picks; solo: this browser's picks
 };
 export const CODE_RE = /^[A-Z0-9]{6}$/;
+export const PICK_MS = 30000;   // per-pick limit; after it any seated captain may auto-pick
+export const READY_MS = 60000;  // once all seats fill, captains not ready by then can be removed
 export const n = () => S.teams.length;
 export const total = () => S.dps.length + S.sup.length;
 // snake: odd rounds go 1→n, even rounds go n→1

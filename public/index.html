@@ -79,6 +79,9 @@ td.cur{background:var(--lime);border-color:var(--navy)}td.cur .no{color:var(--na
 .chip{font-weight:800;font-size:.85rem;padding:2px 10px;background:var(--white);color:var(--muted);border:2px solid var(--frame)}
 .chip.on{background:var(--bar);color:var(--white)}
 .chip.me{background:var(--lime);color:var(--navy)}
+.timer{width:fit-content;margin:-6px auto 14px;padding:0 14px;background:var(--navy);color:var(--lime);font-family:var(--kr-display);font-size:1.3rem;font-variant-numeric:tabular-nums}
+.timer:empty{display:none}
+.timer.low{background:#d63a3a;color:var(--white)}
 .toast{text-align:center;min-height:1.5em;margin:-8px 0 10px;font-weight:800;color:var(--navy)}
 .pool li button.mine span{background:var(--lime);color:var(--navy)}
 .foot{display:flex;justify-content:space-between;font-family:var(--title);font-weight:600;letter-spacing:.06em;color:var(--navy);text-transform:uppercase}
@@ -110,6 +113,7 @@ td.cur{background:var(--lime);border-color:var(--navy)}td.cur .no{color:var(--na
   <div class="plate"><h1>Draft Pick</h1></div>
   <div class="pix" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
   <p class="clock" id="clock"></p>
+  <p class="timer" id="timer"></p>
   <p class="toast" id="toast" role="status"></p>
 
   <div class="roombar" id="roombar" hidden></div>

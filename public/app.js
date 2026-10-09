@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getDatabase, ref, get, set, update, onValue, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-import { S, TEAMS, n, teamOf, roleOf, total, CODE_RE, seatKey, pickKey } from "./draft.js";
+import { getDatabase, ref, get, set, update, onValue, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { S, TEAMS, n, teamOf, roleOf, total, CODE_RE, seatKey, pickKey, PICK_MS, READY_MS } from "./draft.js";
 
 // Public web config: security comes from database.rules.json, not from hiding these.
 const app = initializeApp({
@@ -33,6 +33,12 @@ let draftOrder = [];                   // solo: captains clicked so far on the o
 const mySeat = () => solo ? (order && S.teams[teamOf(S.picks.length)]) : S.teams.find(t => seats[t] === me) || null;
 const seated = () => solo ? n() : S.teams.filter(t => seats[t]).length;
 const roomRef = (path = "") => ref(fdb, `rooms/${code}${path}`);
+const isReady = t => room?.ready?.[seatKey(TEAMS.indexOf(t))] === true;
+const readyCount = () => TEAMS.filter(t => seats[t] && isReady(t)).length;
+const started = () => solo || typeof room?.turn === "number";   // online: turn exists once everyone was ready
+// the rules judge time limits by server time, so show countdowns in server time too
+let skew = 0; onValue(ref(fdb, ".info/serverTimeOffset"), s => { skew = s.val() || 0; });
+const now = () => Date.now() + skew;
 
 let tt; function toast(m) { $("toast").textContent = m; clearTimeout(tt); tt = setTimeout(() => $("toast").textContent = "", 3500); }
 
@@ -61,7 +67,7 @@ function seatsOf(v) {
 // joinable: draft not started and a seat is free (or I already hold one)
 const joinable = v => {
   const s = Object.values(seatsOf(v));
-  return !!v && (s.includes(me) || (!v.picks && s.length < n()));
+  return !!v && (s.includes(me) || (!v.picks && v.turn == null && s.length < n()));
 };
 
 async function createRoom() {
@@ -154,22 +160,79 @@ function confirmOrder() {
 async function exit() {
   if (solo) { solo = false; order = null; S.teams = TEAMS.slice(); S.picks = []; forget(); return render(); }
   const t = mySeat();
-  // before the first pick, leaving frees the seat for someone else
-  if (t && !S.picks.length) { try { await set(roomRef(`/seats/${seatKey(TEAMS.indexOf(t))}`), null); } catch {} }
+  // before the draft starts, leaving frees the seat for someone else
+  if (t && !started()) { const s = seatKey(TEAMS.indexOf(t)); try { await update(roomRef(), { [`seats/${s}`]: null, [`ready/${s}`]: null }); } catch {} }
   leaveRoom(); render();
 }
 
+// one write adds the pick and moves the clock; the rules reject it if the turn already moved on
+const pickWrite = (cur, name) => update(roomRef(), {
+  [`picks/${pickKey(cur)}`]: name, [`taken/${name}`]: pickKey(cur), turn: cur + 1, turnAt: serverTimestamp(),
+});
+
 async function pick(name) {
   const cur = S.picks.length, t = S.teams[teamOf(cur)];
-  if (busy || cur >= total() || seated() < n() || (!solo && seats[t] !== me)) return;
+  if (busy || cur >= total() || seated() < n() || !started() || (!solo && seats[t] !== me)) return;
   if (S.picks.includes(name) || count(teamOf(cur), roleOf(name)) >= S.cap) return;
   if (solo) { S.picks.push(name); saveSolo(); return render(); }
   busy = true; render();
-  const k = pickKey(cur);
-  try { await update(roomRef(), { [`picks/${k}`]: name, [`taken/${name}`]: k }); }
-  catch { toast("지명을 저장하지 못했습니다. 다시 눌러 주세요."); }
+  try { await pickWrite(cur, name); }
+  catch { toast(S.picks.length > cur ? "시간이 지나 자동 지명되었습니다." : "지명을 저장하지 못했습니다. 다시 눌러 주세요."); }
   busy = false; render();
 }
+
+async function readyUp() {
+  const t = mySeat();
+  if (busy || !t || isReady(t)) return; busy = true; render();
+  try { await set(roomRef(`/ready/${seatKey(TEAMS.indexOf(t))}`), true); }
+  catch { toast("준비 상태를 저장하지 못했습니다. 다시 눌러 주세요."); }
+  busy = false; render();
+}
+
+// ---------- timers: any seated captain moves a stalled room along ----------
+
+// time ran out: pick a random player the idle team may still take
+function autoPick() {
+  const cur = S.picks.length, t = teamOf(cur), taken = new Set(S.picks);
+  const pool = [...S.dps, ...S.sup].filter(p => !taken.has(p) && count(t, roleOf(p)) < S.cap);
+  return pool.length ? pickWrite(cur, pool[Math.floor(Math.random() * pool.length)]) : Promise.resolve();
+}
+// ready window over: free every seat that never pressed ready
+function kickUnready() {
+  const u = { readyAt: null };
+  TEAMS.forEach((t, i) => { if (seats[t] && !isReady(t)) u[`seats/${seatKey(i)}`] = null; });
+  return update(roomRef(), u);
+}
+
+let maintBusy = false;
+function maint(fn) {
+  if (maintBusy) return; maintBusy = true;
+  // a rejected write is normal here (another captain got there first, or the server clock disagrees)
+  fn().catch(() => {}).finally(() => setTimeout(() => { maintBusy = false; }, 1000));
+}
+
+function tick() {
+  const el = $("timer"); let txt = "", low = false;
+  if (!solo && code && room && mySeat()) {
+    const full = seated() >= n(), t = now();
+    if (started() && S.picks.length < total()) {
+      const left = (room.turnAt || 0) + PICK_MS - t;
+      txt = `남은 시간 ${Math.max(0, Math.ceil(left / 1000))}초`; low = left < 10000;
+      if (left < -500) maint(autoPick);
+    } else if (!started()) {
+      if (full && readyCount() >= n()) maint(() => update(roomRef(), { turn: 0, turnAt: serverTimestamp(), readyAt: null }));
+      else if (full && !room.readyAt) maint(() => set(roomRef("/readyAt"), serverTimestamp()));
+      else if (full) {
+        const left = room.readyAt + READY_MS - t;
+        txt = `준비 마감 ${Math.max(0, Math.ceil(left / 1000))}초`; low = left < 10000;
+        if (left < -500) maint(kickUnready);
+      } else if (room.readyAt) maint(() => set(roomRef("/readyAt"), null));
+    }
+  }
+  if (el.textContent !== txt) el.textContent = txt;
+  el.classList.toggle("low", low);
+}
+setInterval(tick, 250);
 
 // one step back: last pick first, then the captain order one captain at a time
 function undo() {
@@ -182,7 +245,7 @@ function undo() {
 async function reset(btn) {
   if (!btn.classList.contains("armed")) { btn.classList.add("armed"); btn.textContent = "한 번 더 누르면 초기화됩니다"; return; }
   if (solo) { order = null; draftOrder = []; S.teams = TEAMS.slice(); S.picks = []; saveSolo(); return render(); }
-  try { await update(roomRef(), { picks: null, taken: null }); } catch { toast("초기화하지 못했습니다."); }
+  try { await update(roomRef(), { picks: null, taken: null, turn: 0, turnAt: serverTimestamp() }); } catch { toast("초기화하지 못했습니다."); }
 }
 
 // ---------- render ----------
@@ -208,7 +271,7 @@ function render() {
       `<button class="btn light" data-act="undo" ${order || draftOrder.length ? "" : "disabled"}>선택 취소</button>` +
       `<button class="btn light" data-act="exit">나가기</button>`;
   } else if (code) {
-    bar.innerHTML = `<div class="chips">${TEAMS.map(t => `<span class="chip ${seats[t] === me ? "me" : seats[t] ? "on" : ""}">${esc(t)} ${seats[t] ? "●" : "○"}</span>`).join("")}</div>
+    bar.innerHTML = `<div class="chips">${TEAMS.map(t => `<span class="chip ${seats[t] === me ? "me" : seats[t] ? "on" : ""}">${esc(t)} ${!seats[t] ? "○" : isReady(t) && !started() ? "✓" : "●"}</span>`).join("")}</div>
       <button class="btn light" data-act="exit">나가기</button>`;
   }
 
@@ -241,7 +304,7 @@ function render() {
   }
 
   const cur = S.picks.length, done = cur >= total(), t = teamOf(cur);
-  const full = seated() >= n(), myTurn = full && !done && S.teams[t] === mine;
+  const full = seated() >= n(), go = full && started(), myTurn = go && !done && S.teams[t] === mine;
   let html = `<tr><th class="rnd">R</th>${S.teams.map((c, i) =>
     `<th>${esc(c)} 팀<small>DPS ${count(i, "DPS")}/${S.cap} · SUP ${count(i, "SUP")}/${S.cap}</small></th>`).join("")}</tr>`;
   html += `<tr class="cap"><td class="rnd">TANK</td>${S.teams.map(c => `<td><span class="no">CAPTAIN</span><span class="who">${av(c)}${esc(c)}</span></td>`).join("")}</tr>`;
@@ -250,7 +313,7 @@ function render() {
     for (let i = 0; i < n(); i++) {
       const p = r * n() + i; if (p >= total()) break;
       const name = S.picks[p];
-      cells[teamOf(p)] = `<td class="${p === cur && !done && full ? "cur" : ""}"><span class="no">#${p + 1}</span>${name ? `<span class="who">${av(name)}<span class="nm">${tag(roleOf(name))}${esc(name)}</span></span>` : ""}</td>`;
+      cells[teamOf(p)] = `<td class="${p === cur && !done && go ? "cur" : ""}"><span class="no">#${p + 1}</span>${name ? `<span class="who">${av(name)}<span class="nm">${tag(roleOf(name))}${esc(name)}</span></span>` : ""}</td>`;
     }
     html += `<tr><td class="rnd">${r + 1}</td>${cells.join("")}</tr>`;
   }
@@ -258,6 +321,7 @@ function render() {
 
   $("clock").innerHTML = done ? "드래프트 완료"
     : !full ? `팀장 입장 대기 중 · ${seated()}/${n()}`
+    : !go ? `준비 확인 · ${readyCount()}/${n()}`
     : myTurn && !solo ? `<b>내 차례</b> ${esc(mine)} 팀 · ${Math.floor(cur / n()) + 1}라운드 ${cur % n() + 1}픽`
     : `<b>${esc(S.teams[t])} 팀</b> 지명 차례 · ${Math.floor(cur / n()) + 1}라운드 ${cur % n() + 1}픽`;
 
@@ -266,10 +330,13 @@ function render() {
     return;
   }
   const taken = new Set(S.picks);
-  $("pool").innerHTML = ["DPS", "SUP"].map(role => {
+  const readyHtml = full && !go ? `<h2 class="band">Ready<small>${readyCount()}/${n()} 준비</small></h2>
+    <div class="lobby-row"><button class="btn" data-act="ready" ${isReady(mine) || busy ? "disabled" : ""}>${isReady(mine) ? "준비 완료" : "준비"}</button></div>
+    <p class="hint">모두 준비하면 바로 시작합니다. ${READY_MS / 1000}초 안에 준비하지 않은 팀장은 자리에서 빠집니다. 시작 후 ${PICK_MS / 1000}초 안에 고르지 않으면 자동으로 지명됩니다.</p>` : "";
+  $("pool").innerHTML = readyHtml + ["DPS", "SUP"].map(role => {
     const list = (role === "DPS" ? S.dps : S.sup).filter(p => !taken.has(p));
     const capped = count(t, role) >= S.cap;
-    const note = !full ? "모두 입장하면 시작" : !myTurn ? `${esc(S.teams[t])} 팀 차례` : capped ? "한도 도달" : `남은 ${list.length}명`;
+    const note = !full ? "모두 입장하면 시작" : !go ? "모두 준비하면 시작" : !myTurn ? `${esc(S.teams[t])} 팀 차례` : capped ? "한도 도달" : `남은 ${list.length}명`;
     return `<h2 class="band">${role}<small>${note}</small></h2><ul>` +
       (list.map(p => card(p, `data-p="${esc(p)}" ${!myTurn || capped || busy ? "disabled" : ""} ${myTurn && !capped ? 'class="mine"' : ""}`, `${tag(role)}${esc(p)}`)).join("") || `<li class="empty">없음</li>`) + `</ul>`;
   }).join("");
@@ -283,6 +350,7 @@ document.addEventListener("click", e => {
   else if (act === "solo") startSolo();
   else if (act === "exit") exit();
   else if (act === "undo") undo();
+  else if (act === "ready") readyUp();
   else if (act === "reset") reset(b);
   else if (act === "order-ok") confirmOrder();
   else if (b.dataset.order) toggleOrder(b.dataset.order);
