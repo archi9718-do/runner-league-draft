@@ -86,6 +86,29 @@ td.cur{background:var(--lime);border-color:var(--navy)}td.cur .no{color:var(--na
 .toast{text-align:center;min-height:1.5em;margin:-8px 0 10px;font-weight:800;color:var(--navy)}
 .pool li button.mine span{background:var(--lime);color:var(--navy)}
 .foot{display:flex;justify-content:space-between;font-family:var(--title);font-weight:600;letter-spacing:.06em;color:var(--navy);text-transform:uppercase}
+/* wide screens: board and remaining players side by side so nobody has to scroll during a pick */
+@media (min-width:1200px){
+  .frame{max-width:1760px}
+  #game:not([hidden]){display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:22px;align-items:stretch}
+  #game th,#game td{min-width:0}
+  /* board panel stretches to the player list's height; rows share the extra space */
+  #game>.panel:first-child{display:flex;flex-direction:column}
+  #game>.panel:first-child>.band{width:100%}
+  #game .board{flex:1;display:flex}
+  #game .board table{height:100%}
+  /* fixed row height: the board keeps its full size as the player list empties */
+  #game td{height:120px;box-sizing:border-box;padding:0;vertical-align:middle;overflow:hidden}
+  /* empty slot: big pick number; filled slot: photo card with name bar (number hidden) */
+  #game td .no{font-size:2.6rem;font-weight:800;text-align:center;color:var(--grid)}
+  #game td.cur .no{color:var(--navy)}
+  #game td:has(.who) .no{display:none}
+  #game .who{flex-direction:column;height:116px}
+  #game .who .av{width:100%;height:auto;flex:1;min-height:0;margin:0;border:0;object-position:center 25%}
+  #game .who .nm{display:block;width:100%;box-sizing:border-box;padding:4px 4px;background:var(--bar);color:var(--white);font-family:var(--kr-display);font-weight:400;font-size:1.05rem;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #game .cap .who .nm{background:var(--navy);color:var(--mint)}
+  #game .pool ul{grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+  #game .pool li button span{font-size:.95rem}
+}
 @media (max-width:520px){
   .frame{padding-inline:6px}
   .panel{padding-inline:6px}

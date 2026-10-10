@@ -327,7 +327,7 @@ function render() {
   const full = seated() >= n(), go = full && started(), myTurn = go && !done && S.teams[t] === mine;
   let html = `<tr><th class="rnd">R</th>${S.teams.map((c, i) =>
     `<th>${esc(c)} 팀<small>DPS ${count(i, "DPS")}/${S.cap} · SUP ${count(i, "SUP")}/${S.cap}</small></th>`).join("")}</tr>`;
-  html += `<tr class="cap"><td class="rnd">TANK</td>${S.teams.map(c => `<td><span class="no">CAPTAIN</span><span class="who">${av(c)}${esc(c)}</span></td>`).join("")}</tr>`;
+  html += `<tr class="cap"><td class="rnd">TANK</td>${S.teams.map(c => `<td><span class="no">CAPTAIN</span><span class="who">${av(c)}<span class="nm">${esc(c)}</span></span></td>`).join("")}</tr>`;
   for (let r = 0; r < rounds(); r++) {
     const cells = Array(n()).fill("<td></td>");
     for (let i = 0; i < n(); i++) {
