@@ -86,26 +86,26 @@ td.cur{background:var(--lime);border-color:var(--navy)}td.cur .no{color:var(--na
 .toast{text-align:center;min-height:1.5em;margin:-8px 0 10px;font-weight:800;color:var(--navy)}
 .pool li button.mine span{background:var(--lime);color:var(--navy)}
 .foot{display:flex;justify-content:space-between;font-family:var(--title);font-weight:600;letter-spacing:.06em;color:var(--navy);text-transform:uppercase}
+/* board cells are photo cards at every width: empty slot shows the pick number, filled slot the photo with a name bar */
+/* fixed row height: the board keeps its full size as the player list empties */
+#game th,#game td{min-width:0}
+#game td{height:120px;box-sizing:border-box;padding:0;vertical-align:middle;overflow:hidden}
+#game td .no{font-size:2.6rem;font-weight:800;text-align:center;color:var(--grid)}
+#game td.cur .no{color:var(--navy)}
+#game td:has(.who) .no{display:none}
+#game .who{flex-direction:column;height:116px}
+#game .who .av{width:100%;height:auto;flex:1;min-height:0;margin:0;border:0;object-position:center 25%}
+#game .who .nm{display:block;width:100%;box-sizing:border-box;padding:4px 4px;background:var(--bar);color:var(--white);font-family:var(--kr-display);font-weight:400;font-size:1.05rem;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#game .cap .who .nm{background:var(--navy);color:var(--mint)}
 /* wide screens: board and remaining players side by side so nobody has to scroll during a pick */
 @media (min-width:1200px){
   .frame{max-width:1760px}
   #game:not([hidden]){display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:22px;align-items:stretch}
-  #game th,#game td{min-width:0}
   /* board panel stretches to the player list's height; rows share the extra space */
   #game>.panel:first-child{display:flex;flex-direction:column}
   #game>.panel:first-child>.band{width:100%}
   #game .board{flex:1;display:flex}
   #game .board table{height:100%}
-  /* fixed row height: the board keeps its full size as the player list empties */
-  #game td{height:120px;box-sizing:border-box;padding:0;vertical-align:middle;overflow:hidden}
-  /* empty slot: big pick number; filled slot: photo card with name bar (number hidden) */
-  #game td .no{font-size:2.6rem;font-weight:800;text-align:center;color:var(--grid)}
-  #game td.cur .no{color:var(--navy)}
-  #game td:has(.who) .no{display:none}
-  #game .who{flex-direction:column;height:116px}
-  #game .who .av{width:100%;height:auto;flex:1;min-height:0;margin:0;border:0;object-position:center 25%}
-  #game .who .nm{display:block;width:100%;box-sizing:border-box;padding:4px 4px;background:var(--bar);color:var(--white);font-family:var(--kr-display);font-weight:400;font-size:1.05rem;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #game .cap .who .nm{background:var(--navy);color:var(--mint)}
   #game .pool ul{grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
   #game .pool li button span{font-size:.95rem}
 }
@@ -118,11 +118,11 @@ td.cur{background:var(--lime);border-color:var(--navy)}td.cur .no{color:var(--na
   th{font-size:.85rem;line-height:1.2;word-break:keep-all}
   th small{font-size:.62rem;letter-spacing:0}
   td.rnd,th.rnd{width:20px;font-size:.8rem}
-  td{height:auto}
-  td .no{font-size:.62rem}
-  .who{flex-wrap:wrap;gap:2px;word-break:keep-all}
-  .av{width:22px;height:22px;margin-right:0}
-  .who .tag{font-size:.55rem;padding:0 3px;margin-right:0}
+  #game td{height:78px;padding:0}
+  #game td .no{font-size:1.3rem}
+  #game .who{height:74px}
+  #game .who .nm{font-size:.62rem;padding:2px 1px}
+  #game .who .nm .tag{display:none}
   .pool ul{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
   .pool li button span{font-size:.85rem;padding:5px 2px;word-break:keep-all}
   .pool li button span .tag{display:none}
